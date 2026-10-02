@@ -7,6 +7,17 @@ description: Interact with local Chrome browser session (only on explicit user a
 
 Lightweight Chrome DevTools Protocol CLI. Connects directly via WebSocket — no Puppeteer, works with 100+ tabs, instant connection.
 
+## WSL2 controlling visible Windows Chrome
+
+For this environment, read `WSL.md` next to this file. Use
+`node scripts/cdp-wsl.mjs <command> [arguments]` instead of the original CLI.
+It discovers the Windows NAT gateway and current browser endpoint; override
+with `CDP_HOST` / `CDP_PORT` if needed. Windows setup is provided by
+`scripts/start-windows-chrome.ps1` (network setup requires human administrator
+approval; browser launch is non-elevated). Do not silently change firewall
+rules, assume Linux Chrome is visible on Windows, or keep polling idle tests.
+Ask the user to confirm desktop visibility. This skill works with any agent
+that can load these instructions and run Node.js 22+; it is not Pi-only.
 ## Prerequisites
 
 - Chrome (or Chromium, Brave, Edge, Vivaldi) with remote debugging enabled: open `chrome://inspect/#remote-debugging` and toggle the switch

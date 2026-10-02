@@ -12,12 +12,28 @@ Most browser automation tools launch a fresh, isolated browser. This one connect
 - Interact with tabs you're actively working in
 - See the actual state of a page mid-workflow, not a clean reload
 
+## This fork: Windows Chrome from WSL2, for any agent
+
+This fork adds a PowerShell launcher, WSL-scoped network setup, and a WSL CLI
+wrapper. The upstream browser-control CLI is unchanged. See
+[WSL setup and cross-agent installation](skills/chrome-cdp/WSL.md).
+
+```bash
+node skills/chrome-cdp/scripts/cdp-wsl.mjs list
+```
+
+Use this only after launching **native Windows Chrome** and configuring the
+WSL-to-Windows connection. The helper does not expose CDP to the wider LAN,
+automatically elevate, or assume WSLg windows are visible. Node.js 22+ is the
+only CLI runtime dependency. The `pi` package metadata is optional packaging,
+not a requirement; Claude Code, Codex, and other terminal-capable agents can
+load the same skill directory.
 ## Installation
 
 ### As a pi skill
 
 ```bash
-pi install git:github.com/pasky/chrome-cdp-skill@v1.0.1
+pi install git:github.com/jakkzz/chrome-cdp-skill@wsl-windows-chrome
 ```
 
 ### For other agents (Amp, Claude Code, Cursor, etc.)
