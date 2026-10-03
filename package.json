@@ -1,13 +1,13 @@
 {
   "name": "pi-chrome-cdp",
-  "version": "1.3.0",
-  "description": "Agent-independent Chrome MCP with native Windows, WSL interop, SSH transport and browser-host tab ownership",
+  "version": "1.4.0",
+  "description": "Agent-independent Chrome MCP with native Windows, WSL interop, SSH and reverse-tunnel transports",
   "type": "module",
   "engines": { "node": ">=22" },
   "bin": { "chrome-cdp": "src/cli.mjs" },
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check src/cli.mjs && node --check src/connector.mjs && node --check src/windows-interop.mjs && node --check src/windows-bootstrap.mjs && node --check src/cdp.mjs && node --check src/leases.mjs && node --check src/server.mjs && node --check src/interactions.mjs && node --check extensions/chrome-windows.mjs"
+    "check": "node --check src/cli.mjs && node --check src/connector.mjs && node --check src/windows-interop.mjs && node --check src/windows-bootstrap.mjs && node --check src/cdp.mjs && node --check src/leases.mjs && node --check src/server.mjs && node --check src/interactions.mjs && node --check extensions/chrome-windows.mjs && node --check skills/chrome-cdp/scripts/cdp.mjs"
   },
   "keywords": ["pi-package", "mcp", "skills", "chrome", "cdp", "browser", "devtools"],
   "license": "MIT",

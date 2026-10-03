@@ -235,6 +235,45 @@ OpenSSH using `--remote-shell powershell`; do not SSH into WSL and expose CDP
 with `netsh portproxy`. To control a real Linux GUI Chrome from WSL instead,
 select `--browser-host native` explicitly.
 
+## Codex on a remote agent host with desktop Chrome
+
+For the case where Codex runs on a remote POSIX host while Chrome runs on a local
+Windows, macOS or Linux desktop, the skill now includes a reverse-tunnel launcher
+under `skills/chrome-cdp/launcher/`.
+
+The operator runs the launcher on the browser computer, chooses the site, SSH
+agent-host destination, two loopback ports and a dedicated profile. The launcher:
+
+1. Starts Chrome with a dedicated profile and browser-host loopback CDP port.
+2. Writes `~/.config/chrome-cdp/forwarded.json` on the selected agent host.
+3. Starts an SSH reverse tunnel from the agent-host loopback port to Chrome.
+
+A Skills CLI installation copies the launcher guidance and self-contained CDP CLI
+to Codex:
+
+```sh
+npx skills add jakkzz/chrome-cdp-skill -g -a codex -s chrome-cdp -y
+```
+
+When the descriptor exists, the skill CLI automatically selects that explicit
+forwarded target; it never scans hosts or guesses a port. This makes browser control
+available to a skill-only Codex installation without copying raw credentials or
+changing firewall rules. The launcher must remain running.
+
+For native MCP tools, install the full reviewed package checkout on the agent host
+and configure its descriptor port:
+
+```sh
+codex mcp add chrome-forwarded -- \
+  node "$CHROME_MCP_ENTRY" serve --port "$FORWARDED_CDP_PORT"
+```
+
+Chrome advertises its browser-host port in `/json/version`; `--port` validates that
+loopback endpoint and rewrites it to the selected agent-host tunnel port before
+opening the WebSocket. Both tunnel ends remain bound to loopback. Skill installation
+cannot silently modify persistent Codex MCP settings, so MCP registration remains an
+explicit operator action.
+
 ## Remote access and Tailscale
 
 `doctor` detects OS/WSL, optional herdr context, Tailscale CLI availability and

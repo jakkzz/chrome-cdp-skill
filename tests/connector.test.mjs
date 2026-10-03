@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { environment, parsePortFile, portFileCandidates, validateEndpoint, validatePort, shellQuote, sshArgs, tailscaleCandidates } from '../src/connector.mjs';
+import { environment, forwardedEndpoint, parsePortFile, portFileCandidates, validateEndpoint, validatePort, shellQuote, sshArgs, tailscaleCandidates } from '../src/connector.mjs';
 import { browserHostMode, parseOptions } from '../src/cli.mjs';
 import { encodedPowerShell, windowsInteropSpec, windowsServerCommand } from '../src/windows-interop.mjs';
 
@@ -19,6 +19,15 @@ test('discovery honors each platform and configured directories', () => {
 test('CDP rejects remote, credentialed and redirected endpoint shapes', () => {
   for (const host of ['127.0.0.1', 'localhost', '[::1]']) assert.equal(validateEndpoint(`ws://${host}:9222/devtools/browser/test`), `ws://${host}:9222/devtools/browser/test`);
   for (const url of ['ws://host.test:9222/devtools/browser/test', 'wss://localhost/devtools/browser/test', 'ws://user@localhost/devtools/browser/test', 'ws://localhost/devtools/page/test', 'ws://localhost/devtools/browser/test?x=1']) assert.throws(() => validateEndpoint(url));
+});
+
+test('forwarded loopback ports rewrite Chrome-advertised endpoints to the tunnel listener', () => {
+  assert.equal(
+    forwardedEndpoint('ws://localhost:9222/devtools/browser/test-id', 9778),
+    'ws://127.0.0.1:9778/devtools/browser/test-id',
+  );
+  assert.throws(() => forwardedEndpoint('ws://remote.example:9222/devtools/browser/test-id', 9778));
+  assert.throws(() => forwardedEndpoint('ws://localhost:9222/devtools/page/test-id', 9778));
 });
 
 test('ports and CLI options fail closed', () => {

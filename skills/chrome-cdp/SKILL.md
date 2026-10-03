@@ -5,11 +5,15 @@ description: Use whenever the user asks to inspect, automate, test, troubleshoot
 
 # Chrome MCP
 
-This skill is agent-independent guidance. Browser operations use the configured
-`chrome-cdp` **MCP server**, not the legacy scripts. The core requires Node.js
-22+ and runs on the browser host. Native Windows, macOS and Linux run it locally;
-WSL runs the Windows-side server through PowerShell stdio when configured with
-`--browser-host windows`; remote agents reach the browser host over SSH stdio.
+This skill is agent-independent guidance. Browser operations normally use the
+configured `chrome-cdp` **MCP server**. A skill-only Codex installation on a remote
+agent host may instead use the bundled self-contained CLI, but only when the
+operator's browser-host launcher created an explicit forwarded connection descriptor.
+The MCP core requires Node.js 22+ and runs on the browser host, or against an
+operator-created loopback reverse tunnel. Native Windows, macOS and Linux run it
+locally; WSL runs the Windows-side server through PowerShell stdio when configured
+with `--browser-host windows`; remote agents normally reach the browser host over
+SSH stdio.
 Read the repository's `README.md` and `docs/MCP.md` for installation. If the
 package was copied as only a skill directory, obtain those instructions from
 the package source; do not assume the server is installed or tools exist.
@@ -33,6 +37,39 @@ the package source; do not assume the server is installed or tools exist.
 - Keep target names and personal connection values in user-level MCP settings,
   not project files or skill text. Headless control still requires explicit user
   authorization even though there may be no visible Chrome approval prompt.
+
+## Codex reverse-tunnel mode
+
+Use this mode only when Codex runs on a remote POSIX host and the operator starts
+the bundled launcher on the computer displaying Chrome.
+
+- The launcher opens a dedicated Chrome profile, creates a loopback-only SSH reverse
+  tunnel, and writes `~/.config/chrome-cdp/forwarded.json` on the selected agent host.
+  The descriptor contains only `version`, the selected remote loopback `port`, and
+  the `approvedOrigin`. Never create, edit, or guess this descriptor for the user.
+- A global Skills CLI installation includes `scripts/cdp.mjs`. When the operator
+  selects the forwarded browser, resolve this skill's own directory and invoke
+  `node <skill-dir>/scripts/cdp.mjs <command>`. The CLI automatically uses the
+  descriptor, rewrites Chrome's advertised browser-host WebSocket port to the
+  tunnel's agent-host loopback port, and fails if the tunnel is absent.
+- If a local browser and a forwarded descriptor both exist, do not choose silently.
+  Ask which target to use. For the forwarded target, set
+  `CHROME_CDP_FORWARD_CONFIG=~/.config/chrome-cdp/forwarded.json`; for a local
+  target, set an explicit `CDP_PORT_FILE`.
+- The CLI fallback is single-agent. Do not use it concurrently with the MCP server
+  or another agent controlling the same browser; it does not participate in the
+  MCP server's shared browser-host lease registry.
+- Prefer the MCP tools when the full package is installed and configured. Its
+  `serve --port <descriptor-port>` mode supports the same loopback rewrite. A
+  skill installation cannot silently add persistent Codex MCP configuration;
+  modifying Codex settings still requires explicit operator approval.
+- The approved origin records what the operator opened; it does not authorize
+  credentials, purchases, deletions, uploads, or other sensitive actions. Apply
+  the normal approval rules to every interaction.
+
+The browser-host launchers are included under `launcher/`. They use existing SSH
+configuration and never install keys, modify firewalls, bind CDP to a non-loopback
+address, or touch the user's ordinary Chrome profile.
 
 ## Pi Windows shortcut
 
@@ -103,7 +140,7 @@ Arbitrary evaluation is absent unless the host explicitly enables it; never
 use another interface to bypass that restriction.
 
 On a lease conflict, ask the current owner to release. Do not kill another
-agent, delete its locks or use legacy CDP tools to bypass coordination. All
+agent, delete its locks or use a separate CDP client to bypass coordination. All
 agents for a browser must run their host-side MCP processes as the browser's
 OS user with the same local cache directory. Locks are cooperative; they do
 not constrain humans, other CDP clients or a timed-out script still executing.

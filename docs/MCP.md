@@ -69,6 +69,28 @@ Codex stores the entry in its `mcp_servers` TOML configuration. Keep approvals
 and sandbox restrictions enabled; do not bypass them to make browser access
 work.
 
+### Codex with Chrome reverse-forwarded from a desktop
+
+When Codex runs on a remote POSIX host, the operator can use the browser-host
+launcher bundled under `skills/chrome-cdp/launcher/`. It writes the selected remote
+loopback port and approved origin to `~/.config/chrome-cdp/forwarded.json`, then
+keeps an SSH reverse tunnel open.
+
+Read the port from that operator-created descriptor and register the full package
+checkout explicitly:
+
+```sh
+codex mcp add chrome-forwarded -- \
+  node "$CHROME_MCP_ENTRY" serve --port "$FORWARDED_CDP_PORT"
+```
+
+The server validates Chrome's advertised loopback WebSocket and rewrites its
+browser-host port to the forwarded agent-host loopback port. Do not configure a
+non-loopback endpoint, infer an SSH peer, or create the descriptor on the operator's
+behalf. A skill-only Codex installation can use the bundled self-contained CLI as
+documented in `SKILL.md`; installing a skill does not grant permission to change
+persistent Codex MCP settings.
+
 ## Hermes
 
 ```sh

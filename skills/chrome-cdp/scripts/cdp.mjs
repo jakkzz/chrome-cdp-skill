@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from '
 import { homedir } from 'os';
 import { resolve } from 'path';
 import { spawn } from 'child_process';
+import { pathToFileURL } from 'url';
 import net from 'net';
 
 const TIMEOUT = 15000;
@@ -35,8 +36,47 @@ function sockPath(targetId) {
     : resolve(RUNTIME_DIR, `cdp-${targetId}.sock`);
 }
 
-function getWsUrl() {
+export function readForwardedConfig(path) {
+  let value;
+  try { value = JSON.parse(readFileSync(path, 'utf8')); }
+  catch { throw new Error(`Invalid forwarded Chrome configuration: ${path}`); }
+  if (value.version !== 1 || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535) {
+    throw new Error(`Invalid forwarded Chrome configuration: ${path}`);
+  }
+  try {
+    const origin = new URL(value.approvedOrigin);
+    if (!['https:', 'http:'].includes(origin.protocol) || origin.username || origin.password) throw new Error();
+  } catch { throw new Error(`Invalid approved origin in forwarded Chrome configuration: ${path}`); }
+  return value;
+}
+
+export async function forwardedWsUrl(configPath) {
+  const { port } = readForwardedConfig(configPath);
+  const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
+    redirect: 'error', signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`Forwarded Chrome endpoint returned HTTP ${response.status}`);
+  const advertised = new URL((await response.json()).webSocketDebuggerUrl);
+  if (advertised.protocol !== 'ws:' || !['127.0.0.1', 'localhost', '[::1]'].includes(advertised.hostname)
+      || advertised.username || advertised.password || advertised.search || advertised.hash
+      || !/^\/devtools\/browser\/[a-zA-Z0-9_-]+$/.test(advertised.pathname)) {
+    throw new Error('Forwarded Chrome advertised an invalid browser WebSocket');
+  }
+  advertised.hostname = '127.0.0.1';
+  advertised.port = String(port);
+  return advertised.href;
+}
+
+export async function getWsUrl() {
   const home = homedir();
+  const forwardedConfig = process.env.CHROME_CDP_FORWARD_CONFIG
+    ? resolve(process.env.CHROME_CDP_FORWARD_CONFIG)
+    : resolve(home, '.config', 'chrome-cdp', 'forwarded.json');
+  if (process.env.CHROME_CDP_FORWARD_CONFIG) {
+    if (!existsSync(forwardedConfig)) throw new Error(`Forwarded Chrome configuration not found: ${forwardedConfig}`);
+    return forwardedWsUrl(forwardedConfig);
+  }
+
   // macOS: ~/Library/Application Support/<name>/DevToolsActivePort
   const macBrowsers = [
     'Google/Chrome', 'Google/Chrome Beta', 'Google/Chrome for Testing',
@@ -57,7 +97,6 @@ function getWsUrl() {
     ['com.vivaldi.Vivaldi', 'vivaldi'],
   ];
   const candidates = [
-    process.env.CDP_PORT_FILE,
     ...macBrowsers.flatMap(b => [
       resolve(home, 'Library/Application Support', b, 'DevToolsActivePort'),
       resolve(home, 'Library/Application Support', b, 'Default/DevToolsActivePort'),
@@ -78,13 +117,29 @@ function getWsUrl() {
         resolve(base, b, 'User Data/Default/DevToolsActivePort'),
       ];
     }) : []),
-  ].filter(Boolean);
-  const portFile = candidates.find(p => existsSync(p));
-  if (!portFile) throw new Error('No DevToolsActivePort found. Enable remote debugging at chrome://inspect/#remote-debugging');
-  const lines = readFileSync(portFile, 'utf8').trim().split('\n');
-  if (lines.length < 2 || !lines[0] || !lines[1]) throw new Error(`Invalid DevToolsActivePort file: ${portFile}`);
-  const host = process.env.CDP_HOST || '127.0.0.1';
-  return `ws://${host}:${lines[0]}${lines[1]}`;
+  ];
+  const explicitPortFile = process.env.CDP_PORT_FILE && resolve(process.env.CDP_PORT_FILE);
+  if (explicitPortFile) {
+    if (!existsSync(explicitPortFile)) throw new Error(`DevToolsActivePort file not found: ${explicitPortFile}`);
+    const lines = readFileSync(explicitPortFile, 'utf8').trim().split(/\r?\n/);
+    if (lines.length < 2 || !/^\d+$/.test(lines[0]) || !/^\/devtools\/browser\/[a-zA-Z0-9_-]+$/.test(lines[1])) {
+      throw new Error(`Invalid DevToolsActivePort file: ${explicitPortFile}`);
+    }
+    return `ws://${process.env.CDP_HOST || '127.0.0.1'}:${lines[0]}${lines[1]}`;
+  }
+
+  const portFile = candidates.find(path => existsSync(path));
+  const hasForwarded = existsSync(forwardedConfig);
+  if (portFile && hasForwarded) {
+    throw new Error(`Multiple Chrome targets found. Set CDP_PORT_FILE for the local browser or CHROME_CDP_FORWARD_CONFIG=${forwardedConfig} for the forwarded browser.`);
+  }
+  if (hasForwarded) return forwardedWsUrl(forwardedConfig);
+  if (!portFile) throw new Error('No Chrome target found. Enable local debugging or start the approved reverse-tunnel launcher.');
+  const lines = readFileSync(portFile, 'utf8').trim().split(/\r?\n/);
+  if (lines.length < 2 || !/^\d+$/.test(lines[0]) || !/^\/devtools\/browser\/[a-zA-Z0-9_-]+$/.test(lines[1])) {
+    throw new Error(`Invalid DevToolsActivePort file: ${portFile}`);
+  }
+  return `ws://${process.env.CDP_HOST || '127.0.0.1'}:${lines[0]}${lines[1]}`;
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -488,7 +543,7 @@ async function runDaemon(targetId) {
 
   const cdp = new CDP();
   try {
-    await cdp.connect(getWsUrl());
+    await cdp.connect(await getWsUrl());
   } catch (e) {
     process.stderr.write(`Daemon: cannot connect to Chrome: ${e.message}\n`);
     process.exit(1);
@@ -746,6 +801,12 @@ Usage: cdp <command> [args]
 <target> is a unique targetId prefix from "cdp list". If a prefix is ambiguous,
 use more characters.
 
+TARGET SELECTION
+  The CLI uses ~/.config/chrome-cdp/forwarded.json when the operator-created
+  reverse-tunnel descriptor is the only available target. Set
+  CHROME_CDP_FORWARD_CONFIG to select that descriptor explicitly, or CDP_PORT_FILE
+  to select a local Chrome profile explicitly. It refuses to guess when both exist.
+
 COORDINATE SYSTEM
   shot captures the viewport at the device's native resolution.
   The screenshot image size = CSS pixels × DPR (device pixel ratio).
@@ -791,7 +852,7 @@ async function main() {
 
   if (cmd === 'list' || cmd === 'ls') {
     const cdp = new CDP();
-    await cdp.connect(getWsUrl());
+    await cdp.connect(await getWsUrl());
     const pages = await getPages(cdp);
     cdp.close();
     writeFileSync(PAGES_CACHE, JSON.stringify(pages), { mode: 0o600 });
@@ -804,7 +865,7 @@ async function main() {
   if (cmd === 'open') {
     const url = args[0] || 'about:blank';
     const cdp = new CDP();
-    await cdp.connect(getWsUrl());
+    await cdp.connect(await getWsUrl());
     const { targetId } = await cdp.send('Target.createTarget', { url });
     // Refresh cache; new tab may not appear in getTargets immediately, so add it manually
     const pages = await getPages(cdp);
@@ -879,4 +940,6 @@ async function main() {
   }
 }
 
-main().catch(e => { console.error(e.message); process.exit(1); });
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch(e => { console.error(e.message); process.exit(1); });
+}

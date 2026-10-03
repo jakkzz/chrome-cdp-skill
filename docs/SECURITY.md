@@ -9,6 +9,11 @@ as the user. MCP is a tool protocol, **not** an authorization boundary.
 - WSL Windows mode launches the Windows-side MCP through encoded PowerShell
   stdio. Raw CDP remains on Windows loopback; no `portproxy` or firewall rule is
   created. The Windows process owns endpoint discovery and tab leases.
+- Reverse-tunnel mode is an explicit operator-selected alternative for a remote
+  POSIX agent host. Both SSH `-R` ends bind to loopback. The browser-host launcher
+  writes a mode-0600 descriptor containing only the selected remote port and approved
+  origin; it does not copy credentials or keys. The agent validates and rewrites the
+  browser-advertised loopback WebSocket to that selected tunnel port.
 - Remote mode runs the MCP process on the browser host through SSH stdio.
   It does not expose an HTTP MCP server or raw debugging port over the tailnet.
 - SSH uses `BatchMode=yes` and `StrictHostKeyChecking=yes`. Connection and

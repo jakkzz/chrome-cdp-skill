@@ -89,6 +89,13 @@ export function validateEndpoint(value) {
   return url.href;
 }
 
+export function forwardedEndpoint(value, port) {
+  const endpoint = new URL(validateEndpoint(value));
+  endpoint.hostname = '127.0.0.1';
+  endpoint.port = String(validatePort(port));
+  return endpoint.href;
+}
+
 export async function discoverEndpoint({ portFile, port } = {}) {
   if (portFile && port) throw new Error('Choose either --port-file or --port');
   if (port) {
@@ -96,7 +103,7 @@ export async function discoverEndpoint({ portFile, port } = {}) {
       signal: AbortSignal.timeout(5000), redirect: 'error',
     });
     if (!response.ok) throw new Error(`Chrome endpoint returned HTTP ${response.status}`);
-    return validateEndpoint((await response.json()).webSocketDebuggerUrl);
+    return forwardedEndpoint((await response.json()).webSocketDebuggerUrl, port);
   }
   if (portFile) return parsePortFile(await readFile(resolve(portFile), 'utf8'));
   for (const candidate of portFileCandidates()) {
