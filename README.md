@@ -245,8 +245,8 @@ The operator runs the launcher on the browser computer, chooses the site, SSH
 agent-host destination, two loopback ports and a dedicated profile. The launcher:
 
 1. Starts Chrome with a dedicated profile and browser-host loopback CDP port.
-2. Writes `~/.config/chrome-cdp/forwarded.json` on the selected agent host.
-3. Starts an SSH reverse tunnel from the agent-host loopback port to Chrome.
+2. Requests an SSH reverse tunnel from the agent-host loopback port to Chrome.
+3. Writes `~/.config/chrome-cdp/forwarded.json` only after SSH accepts the forwarding.
 
 A Skills CLI installation copies the launcher guidance and self-contained CDP CLI
 to Codex:

@@ -7,7 +7,7 @@
 // the CDP session open. Chrome's "Allow debugging" modal fires once per
 // daemon (= once per tab). Daemons auto-exit after 20min idle.
 
-import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync, realpathSync } from 'fs';
 import { homedir } from 'os';
 import { resolve } from 'path';
 import { spawn } from 'child_process';
@@ -940,6 +940,6 @@ async function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   main().catch(e => { console.error(e.message); process.exit(1); });
 }

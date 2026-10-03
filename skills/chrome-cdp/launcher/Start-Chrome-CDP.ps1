@@ -102,16 +102,13 @@ try {
     if (-not $ready) { throw 'Chrome did not open CDP. Close only the dedicated profile using this directory and retry.' }
     $descriptor = @{ version = 1; port = $remotePort; approvedOrigin = $origin } | ConvertTo-Json -Compress
     $descriptor64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($descriptor))
-    $remoteSetup = "umask 077; mkdir -p ~/.config/chrome-cdp; printf '%s' '$descriptor64' | base64 -d > ~/.config/chrome-cdp/forwarded.json.tmp && chmod 600 ~/.config/chrome-cdp/forwarded.json.tmp && mv ~/.config/chrome-cdp/forwarded.json.tmp ~/.config/chrome-cdp/forwarded.json"
-    Write-Host "`nInstalling the approved connection descriptor on $destination."
-    & ssh.exe -T $destination $remoteSetup
-    if ($LASTEXITCODE -ne 0) { throw "Could not install the remote connection descriptor (SSH exit $LASTEXITCODE)." }
+    $remoteSetup = "umask 077; mkdir -p ~/.config/chrome-cdp; printf '%s' '$descriptor64' | base64 -d > ~/.config/chrome-cdp/forwarded.json.tmp && chmod 600 ~/.config/chrome-cdp/forwarded.json.tmp && mv ~/.config/chrome-cdp/forwarded.json.tmp ~/.config/chrome-cdp/forwarded.json && printf '\nTunnel ready; connection descriptor installed.\n' >&2 && while :; do sleep 3600; done"
     Write-Host "`nChrome is ready. Sign in manually in the new window."
-    Write-Host "Tunnel: $destination 127.0.0.1:$remotePort -> this computer 127.0.0.1:$localPort"
+    Write-Host "Starting tunnel: $destination 127.0.0.1:$remotePort -> this computer 127.0.0.1:$localPort"
     Write-Host "Agent endpoint: http://127.0.0.1:$remotePort`nApproved origin: $origin"
     Write-Host 'Keep this terminal open. Ctrl+C stops the tunnel; Chrome stays open.'
-    & ssh.exe -N -T -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R "127.0.0.1:${remotePort}:127.0.0.1:${localPort}" $destination
-    if ($LASTEXITCODE -ne 0) { throw "SSH tunnel stopped with exit code $LASTEXITCODE. Check SSH authentication and whether server port $remotePort is already occupied." }
+    & ssh.exe -T -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R "127.0.0.1:${remotePort}:127.0.0.1:${localPort}" $destination $remoteSetup
+    if ($LASTEXITCODE -ne 0) { throw "SSH tunnel stopped with exit code $LASTEXITCODE. Check SSH authentication, remote descriptor tools, and whether agent-host port $remotePort is already occupied." }
 } catch {
     Write-Host "`nError: $($_.Exception.Message)" -ForegroundColor Red
     exit 1

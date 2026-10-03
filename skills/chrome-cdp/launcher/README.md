@@ -38,8 +38,8 @@ Windows user directory) and retains its own login. Your ordinary Chrome profile
 is not copied or modified. Chrome requires a non-default user data directory for
 remote-debugging launch flags.
 
-After Chrome becomes ready, the launcher writes this file on the selected remote
-agent host with mode 0600:
+After Chrome becomes ready and SSH accepts the requested reverse forwarding, the
+same SSH session writes this file on the selected remote agent host with mode 0600:
 
 ```text
 ~/.config/chrome-cdp/forwarded.json

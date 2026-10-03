@@ -1,11 +1,34 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, symlink, mkdir } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { forwardedWsUrl, readForwardedConfig } from '../skills/chrome-cdp/scripts/cdp.mjs';
+
+test('skill CLI runs through a global Codex skill directory symlink', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'chrome-cdp-global-'));
+  const installed = join(directory, 'chrome-cdp');
+  try {
+    await symlink(fileURLToPath(new URL('../skills/chrome-cdp/', import.meta.url)), installed,
+      process.platform === 'win32' ? 'junction' : 'dir');
+    const runtime = join(directory, 'runtime');
+    await mkdir(runtime);
+    const { stdout, stderr } = await promisify(execFile)(process.execPath,
+      [join(installed, 'scripts', 'cdp.mjs'), '--help'], {
+        cwd: directory, timeout: 5000,
+        env: { ...process.env, XDG_RUNTIME_DIR: runtime, LOCALAPPDATA: runtime },
+      });
+    assert.match(stdout, /TARGET SELECTION/);
+    assert.equal(stderr, '');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 async function listen(server) {
   await new Promise((resolve, reject) => {

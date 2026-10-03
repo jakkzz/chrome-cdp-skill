@@ -109,11 +109,10 @@ while [ "$attempt" -lt 40 ]; do
 done
 [ "$ready" = 1 ] || fail "Chrome did not open CDP. Close only the dedicated profile using this directory and retry. Log: $profile_dir/launcher.log"
 descriptor=$(printf '{"version":1,"port":%s,"approvedOrigin":"%s"}' "$remote_port" "$origin" | base64 | tr -d '\r\n')
-printf '\nInstalling the approved connection descriptor on %s.\n' "$destination"
-ssh -T "$destination" "umask 077; mkdir -p ~/.config/chrome-cdp; printf '%s' '$descriptor' | base64 -d > ~/.config/chrome-cdp/forwarded.json.tmp && chmod 600 ~/.config/chrome-cdp/forwarded.json.tmp && mv ~/.config/chrome-cdp/forwarded.json.tmp ~/.config/chrome-cdp/forwarded.json" || fail 'Could not install the remote connection descriptor.'
+remote_setup="umask 077; mkdir -p ~/.config/chrome-cdp; printf '%s' '$descriptor' | base64 -d > ~/.config/chrome-cdp/forwarded.json.tmp && chmod 600 ~/.config/chrome-cdp/forwarded.json.tmp && mv ~/.config/chrome-cdp/forwarded.json.tmp ~/.config/chrome-cdp/forwarded.json && printf '\\nTunnel ready; connection descriptor installed.\\n' >&2 && while :; do sleep 3600; done"
 printf '\nChrome is ready. Sign in manually in the new window.\n'
-printf 'Tunnel: %s 127.0.0.1:%s -> this computer 127.0.0.1:%s\n' "$destination" "$remote_port" "$local_port"
+printf 'Starting tunnel: %s 127.0.0.1:%s -> this computer 127.0.0.1:%s\n' "$destination" "$remote_port" "$local_port"
 printf 'Agent endpoint: http://127.0.0.1:%s\nApproved origin: %s\n' "$remote_port" "$origin"
 printf 'Keep this terminal open. Ctrl+C stops the tunnel; Chrome stays open.\n\n'
-ssh -N -T -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
-    -R "127.0.0.1:$remote_port:127.0.0.1:$local_port" "$destination"
+ssh -T -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+    -R "127.0.0.1:$remote_port:127.0.0.1:$local_port" "$destination" "$remote_setup"
