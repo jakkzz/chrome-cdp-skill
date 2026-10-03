@@ -1,25 +1,21 @@
 {
   "name": "pi-chrome-cdp",
   "version": "1.1.0",
-  "description": "Give your AI agent access to your live Chrome session — works out of the box, connects to tabs you already have open",
-  "keywords": [
-    "pi-package",
-    "pi",
-    "pi-coding-agent",
-    "skills",
-    "chrome",
-    "cdp",
-    "browser",
-    "devtools"
-  ],
+  "description": "Agent-independent Chrome MCP with local discovery, SSH transport and browser-host tab ownership",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "bin": { "chrome-cdp": "src/cli.mjs" },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check src/cli.mjs && node --check src/connector.mjs && node --check src/cdp.mjs && node --check src/leases.mjs && node --check src/server.mjs && node --check src/interactions.mjs"
+  },
+  "keywords": ["pi-package", "mcp", "skills", "chrome", "cdp", "browser", "devtools"],
   "license": "MIT",
-  "files": [
-    "skills/",
-    "README.md"
-  ],
-  "pi": {
-    "skills": [
-      "./skills"
-    ]
+  "files": ["src/", "skills/", "README.md", "docs/"],
+  "pi": { "skills": ["./skills"] },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "proper-lockfile": "^4.1.2",
+    "zod": "^4.6.5"
   }
 }

@@ -1,78 +1,215 @@
 # chrome-cdp
 
-Let your AI agent see and interact with your **live Chrome session** — the tabs you already have open, your logged-in accounts, your current page state. No browser automation framework, no separate browser instance, no re-login.
+Agent-independent **Chrome MCP** for the browser you select. Use it from Pi,
+OMP, Claude Code, Codex, Hermes, or another stdio MCP client. Node.js 22+ is
+required. No Puppeteer and no browser download.
 
-Works out of the box with any Chrome installation. One toggle to enable, nothing else to install.
+## Architecture
 
-## Why this matters
-
-Most browser automation tools launch a fresh, isolated browser. This one connects to the Chrome you're already running, so your agent can:
-
-- Read pages you're logged into (Gmail, GitHub, internal tools, ...)
-- Interact with tabs you're actively working in
-- See the actual state of a page mid-workflow, not a clean reload
-
-## This fork: Windows Chrome from WSL2, for any agent
-
-This fork adds a PowerShell launcher, WSL-scoped network setup, and a WSL CLI
-wrapper. The upstream browser-control CLI is unchanged. See
-[WSL setup and cross-agent installation](skills/chrome-cdp/WSL.md).
-
-```bash
-node skills/chrome-cdp/scripts/cdp-wsl.mjs list
+```text
+agent -> local stdio MCP -> loopback CDP -> Chrome
+agent -> SSH stdio -> browser-host MCP -> loopback CDP -> Chrome
 ```
 
-Use this only after launching **native Windows Chrome** and configuring the
-WSL-to-Windows connection. The helper does not expose CDP to the wider LAN,
-automatically elevate, or assume WSLg windows are visible. Node.js 22+ is the
-only CLI runtime dependency. The `pi` package metadata is optional packaging,
-not a requirement; Claude Code, Codex, and other terminal-capable agents can
-load the same skill directory.
-## Installation
+The server runs on the **browser host**, as the browser's OS user. This keeps
+raw CDP off the network and shares tab ownership across independent agents,
+even when those agents run on different machines. SSH is the secure transport;
+Tailscale is optional reachability, not authorization.
 
-### As a pi skill
+Host, username, SSH port, identity file and browser profile are runtime inputs.
+There are no personal device addresses, credentials or usernames in defaults.
+The connector never edits `authorized_keys`, firewall rules, or browser settings.
 
-```bash
-pi install git:github.com/jakkzz/chrome-cdp-skill@wsl-windows-chrome
+## Install
+
+Clone this repository on the agent machine and, for remote use, on the browser
+host. In each checkout:
+
+```sh
+npm ci
+node src/cli.mjs doctor
+node src/cli.mjs setup
 ```
 
-### For other agents (Amp, Claude Code, Cursor, etc.)
+Keep each checkout at the same reviewed revision. There is no automatic remote
+installation or package publication. The package retains its existing
+`pi-chrome-cdp` name for compatibility, but its MCP implementation is not Pi-specific.
 
-Clone or copy the `skills/chrome-cdp/` directory wherever your agent loads skills or context from. The only runtime dependency is **Node.js 22+** — no npm install needed.
+On the machine displaying Chrome, open:
 
-### Enable remote debugging in Chrome
+**`chrome://inspect/#remote-debugging`**
 
-Navigate to `chrome://inspect/#remote-debugging` and toggle the switch. That's it.
+Enable remote debugging and approve Chrome's connection prompts. This is a
+setup page, **not** a network endpoint. Chrome versions that do not offer this
+page need their supported debugging setup; the connector does not change it.
 
-The CLI auto-detects Chrome, Chromium, Brave, Edge, and Vivaldi on macOS, Linux, and Windows. If your browser stores `DevToolsActivePort` in a non-standard location, set the `CDP_PORT_FILE` environment variable to the full path.
+To explicitly request opening the setup page locally:
 
-## Usage
-
-```bash
-scripts/cdp.mjs list                              # list open tabs
-scripts/cdp.mjs shot   <target>                   # screenshot → runtime dir
-scripts/cdp.mjs snap   <target>                   # accessibility tree (compact, semantic)
-scripts/cdp.mjs html   <target> [".selector"]     # full HTML or scoped to CSS selector
-scripts/cdp.mjs eval   <target> "expression"      # evaluate JS in page context
-scripts/cdp.mjs nav    <target> https://...       # navigate and wait for load
-scripts/cdp.mjs net    <target>                   # network resource timing
-scripts/cdp.mjs click  <target> "selector"        # click element by CSS selector
-scripts/cdp.mjs clickxy <target> <x> <y>          # click at CSS pixel coordinates
-scripts/cdp.mjs type   <target> "text"            # type at focused element (works in cross-origin iframes)
-scripts/cdp.mjs loadall <target> "selector"       # click "load more" until gone
-scripts/cdp.mjs evalraw <target> <method> [json]  # raw CDP command passthrough
-scripts/cdp.mjs open   [url]                      # open new tab (triggers Allow prompt)
-scripts/cdp.mjs stop   [target]                   # stop daemon(s)
+```sh
+node src/cli.mjs setup --open --browser-path "$BROWSER_EXECUTABLE"
 ```
 
-`<target>` is a unique prefix of the targetId shown by `list`.
+macOS can omit `--browser-path` to request Google Chrome via `open -a`.
+Opening internal Chrome URLs programmatically is browser/version dependent;
+confirm the visible page and use the manual URL if necessary. Running this in
+WSL does not launch an application on a remote Mac.
 
-## Why not chrome-devtools-mcp?
+## Configure an agent
 
-[chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) reconnects on every command, so Chrome's "Allow debugging" modal can re-appear repeatedly and target enumeration times out with many tabs open. `chrome-cdp` holds one persistent daemon per tab — the modal fires once, and it handles 100+ tabs reliably.
+The universal executable/argument pair is:
 
-## How it works
+```text
+command: node
+args: [ABSOLUTE_CHECKOUT_PATH/src/cli.mjs, serve]
+```
 
-Connects directly to Chrome's remote debugging WebSocket — no Puppeteer, no intermediary. On first access to a tab, a lightweight background daemon is spawned that holds the session open. Chrome's "Allow debugging" modal appears once per tab; subsequent commands reuse the daemon silently. Daemons auto-exit after 20 minutes of inactivity.
+See [agent configuration](docs/MCP.md) for all five clients. Install the optional
+skill only for workflow guidance; **MCP is the supported browser-control interface**.
 
-This approach is also why it handles 100+ open tabs reliably, where tools built on Puppeteer often time out during target enumeration.
+Custom profile or explicit loopback port:
+
+```sh
+node src/cli.mjs serve --port-file "$DEVTOOLS_PORT_FILE"
+node src/cli.mjs serve --port "$CDP_PORT"
+```
+
+These are alternative connection inputs. Automatic discovery uses conventional
+profile locations on macOS, Windows and Linux (including Flatpak). It does not
+scan networks, choose a tailnet peer, or silently fall back to another browser
+when a discovered file is invalid. WSL agents should use SSH to the actual
+browser host rather than assume that a Linux browser is visible on Windows.
+
+## Remote access and Tailscale
+
+`doctor` detects OS/WSL, optional herdr context, Tailscale CLI availability and
+whether its backend is connected. It also reports browser endpoint discovery.
+Discovery alone does not prove browser control; use MCP `chrome_connect` for
+an actual WebSocket + CDP handshake.
+
+1. Choose the browser host explicitly. A tailnet IP or hostname is an SSH host,
+   not automatically a Chrome endpoint.
+2. Enable SSH on that host yourself. Install Node.js 22+ and this package there.
+3. Add your **public** SSH key to that user's `~/.ssh/authorized_keys` yourself.
+   Windows OpenSSH's administrator configuration may use a different file.
+   Follow your host's SSH instructions and permissions. Never send a private key.
+4. Verify the host-key fingerprint out of band and establish SSH access manually.
+5. Supply remote settings to the MCP launch command:
+
+```sh
+node "$LOCAL_CHECKOUT/src/cli.mjs" serve \
+  --ssh-host "$BROWSER_HOST" \
+  --ssh-user "$BROWSER_USER" \
+  --remote-entry "$REMOTE_CHECKOUT/src/cli.mjs"
+```
+
+Use `--remote-node` when noninteractive SSH does not find Node in PATH;
+`--identity-file` for an existing private key; `--ssh-port` for a custom SSH port.
+An existing SSH-config alias can supply the user/key/port instead.
+For Windows hosts use `--remote-shell powershell`; the encoded command avoids
+cmd.exe quoting problems. For POSIX hosts the default is `posix`.
+`--port-file` and `--port` in remote mode refer to **browser-host** values.
+
+SSH uses batch authentication, strict host-key checking, a bounded connection
+timeout and keepalives. No passwords are solicited or stored. Configuration
+belongs in your agent's user-level settings, not this repository.
+
+## Tools and safe workflow
+
+1. `chrome_doctor` / `chrome_connect`: inspect setup and verify the connection.
+2. `chrome_tabs`: list actual page targets.
+3. `chrome_claim`: acquire a full target ID before reading or changing it.
+4. `chrome_wait`: wait for document readiness plus an exact URL, unique visible
+   selector and/or visible text. After navigation, include a URL or selector so
+   the previous document cannot accidentally satisfy the wait. This is not
+   network-idle detection. Waits are cancellable and capped at 20 seconds.
+5. `chrome_snapshot` / `chrome_screenshot`: inspect the owned tab.
+6. `chrome_navigate`, `chrome_click`, `chrome_click_at`, `chrome_type`,
+   `chrome_key`, `chrome_scroll`, `chrome_drag`, `chrome_select`: interact,
+   wait for the expected state, then take a fresh snapshot.
+7. `chrome_release`: detach and release when the task finishes, without closing
+   the tab. Keep the claim during an interactive task, including conversation
+   turns; do not detach after every observation.
+
+`chrome_open` creates and claims a new HTTP(S) tab; `chrome_close_tab` closes an
+owned tab. Arbitrary `chrome_evaluate` is **absent by default**; the host must
+explicitly launch with `--allow-evaluate` to expose it.
+
+Navigation accepts HTTP(S), not executable/internal schemes. Text/tree output
+and screenshot output are bounded. Click coordinates use CSS viewport pixels,
+not screenshot device pixels. Selector clicks require a unique, visible,
+unobscured match and do not silently scroll.
+
+`chrome_scroll` dispatches real wheel input using CSS-pixel deltas. Supply a
+visible pane selector or `x`/`y` coordinates for nested scrolling; otherwise the
+pointer uses the viewport center. Supply selectors **or** coordinates, not both.
+`chrome_drag` performs a left-button pointer gesture between unique visible
+selectors or coordinate pairs, with bounded steps/duration. Cancellation attempts
+to release the pointer; inspect after errors. File drops and intercepted HTML
+drag payloads are not implemented. `chrome_select` handles native HTML `<select>`
+values **or exact visible labels**, including multi-select and clearing a
+multi-select with `values: []`. Supply only one of `values` or `labels`; observed
+labels let agents select options without guessing internal IDs.
+Missing, ambiguous and disabled options are rejected before changing selection.
+Custom dropdown menus still use click/key tools. Input/change events do not
+confirm that any backend operation succeeded.
+
+### Persistent interactive sessions
+
+Let your agent client keep one stdio MCP server alive for the session. The
+server reuses its browser WebSocket and each owned tab's CDP attachment. Do not
+start/close a temporary client for each action or release a tab between steps.
+Chrome's initial consent remains required; restarts, reconnects and new tab
+attachments may ask again. This is not a way to bypass Chrome permission.
+
+Pi can expose tools directly with `--exposure direct` during registration; an
+existing user MCP entry can set `"exposure": "direct"`. Run `/reload` once after
+updating the server/configuration, then use the tools interactively without
+verification scripts. Other agents use the same persistent MCP transport.
+
+## Ownership, herdr and limitations
+
+- All MCP sessions for a browser must use the same browser OS user and default
+  local lease directory (`chrome-cdp-mcp/leases` under its cache directory).
+  Avoid per-session cache overrides and network filesystems.
+- Filesystem locks are shared across processes. They heartbeat while held;
+  an unresponsive/crashed owner's lock becomes stale after two minutes.
+- A conflicting session must wait for release; there is no forced-takeover tool.
+- Closing MCP stdin or terminating it closes its CDP connection and releases
+  its leases. In-flight mutations are never automatically retried.
+- These are **cooperative locks**, not a browser security boundary or a fencing
+  mechanism. A human, another CDP client, legacy scripts or enabled JavaScript
+  can bypass them. A stalled command may still execute in Chrome after timeout;
+  inspect state before retrying. Do not concurrently use legacy CLI control.
+- herdr is detected through `HERDR_ENV=1`; remote proxy mode forwards this as
+  informational context. It is optional and never grants browser permission.
+  No herdr panes are opened or agents launched automatically.
+- Headless SSH sessions may not share a visible desktop environment on some
+  hosts. The human must confirm browser visibility and approve debugging.
+- Tool annotations are hints for agent approval gates, not enforced human
+  authorization. See [security](docs/SECURITY.md).
+
+## Verification
+
+```sh
+npm run check
+npm test
+npm pack --dry-run
+```
+
+Tests cover input validation, platform paths, SSH quoting, real MCP initialization
+and stdio, cross-process locks, and actual CDP Runtime transport against a Node
+inspector. They do **not** claim end-to-end Chrome desktop or all five agent
+verification. Live macOS/Windows/Linux browser checks remain separate.
+
+An opt-in end-to-end test launches a real sandboxed, headless Chrome with a
+separate temporary profile and exercises two independent MCP clients:
+
+```sh
+CHROME_TEST_EXECUTABLE="$BROWSER_EXECUTABLE" node --test tests/chrome-live.test.mjs
+```
+
+It checks page interaction, screenshots, shared ownership and disconnect
+cleanup. Headless success does not prove visible desktop or remote Mac access.
+
+Legacy WSL scripts remain for compatibility; [their old setup](skills/chrome-cdp/WSL.md)
+is not the recommended MCP path and its network proxy is not needed for SSH mode.
