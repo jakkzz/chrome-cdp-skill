@@ -18,13 +18,36 @@ pi mcp list
 ```
 
 Pi reads its user-level `mcp.json` under its agent directory. Run `/reload` in an
-existing session after configuration. Installing the optional Pi skill package
-does not automatically register MCP. Pi's tool exposure/approval settings remain
-in effect.
+existing session after configuration. Installing this Pi package loads its optional
+extension, but it registers Windows Chrome only after the operator explicitly runs
+`/chrome-windows`. Pi's tool exposure and approval settings remain in effect.
 For an existing Pi entry, add `"exposure": "direct"` inside that server's
 object, preserving its connection arguments. This changes tool discoverability,
 not approvals. Reload once after deployment; normal tool calls keep the server
 and browser attachment alive rather than launching a one-shot client.
+
+### Pi one-command Windows Chrome setup from WSL2
+
+When this repository is installed as a Pi package, its extension adds
+`/chrome-windows`. From a Pi process running inside WSL2—even when entered through
+`herdr --remote wsl2` or `nebula ssh wsl2`—run:
+
+```text
+/chrome-windows
+```
+
+The command verifies Windows Node.js 22+, npm, Google Chrome and PowerShell interop;
+installs a content-versioned copy of the reviewed MCP runtime under Windows
+LocalAppData; opens `chrome://inspect/#remote-debugging` in Windows Chrome; and
+registers a session-scoped `chrome-windows` MCP server with direct exposure. Chrome
+still requires the human to enable remote debugging and approve its visible prompt.
+The extension never changes firewall, SSH or Chrome security settings.
+
+The registration lasts for the current Pi extension runtime. Run the command again
+after starting a new Pi session or reloading the extension. If a file-configured MCP
+server already uses the name `chrome-windows`, Pi gives that file configuration
+precedence; remove or rename the conflicting entry if the command's generated target
+should be used.
 
 ## Claude Code
 

@@ -34,9 +34,13 @@ node src/cli.mjs doctor
 node src/cli.mjs setup
 ```
 
-Keep each checkout at the same reviewed revision. There is no automatic remote
-installation or package publication. The package retains its existing
-`pi-chrome-cdp` name for compatibility, but its MCP implementation is not Pi-specific.
+Keep each checkout at the same reviewed revision. Manual SSH setup never installs
+onto another host. The Pi `/chrome-windows` extension is the narrow exception for
+the Windows host paired with the current WSL2 environment: on explicit invocation,
+it copies this reviewed runtime into versioned Windows LocalAppData, runs Windows
+`npm ci`, opens Chrome's debugging setup page, and registers a session-scoped MCP
+server. The package retains its existing `pi-chrome-cdp` name for compatibility,
+but its MCP implementation is not Pi-specific.
 
 On the machine displaying Chrome, open:
 
@@ -68,6 +72,129 @@ args: [ABSOLUTE_CHECKOUT_PATH/src/cli.mjs, serve]
 
 See [agent configuration](docs/MCP.md) for all five clients. Install the optional
 skill only for workflow guidance; **MCP is the supported browser-control interface**.
+
+## Select between Mac, Linux, Windows and headless targets
+
+A server process controls exactly one browser host for its lifetime. Browser tools
+do not switch hosts dynamically. To make the target explicit and operator-controlled,
+register one named MCP server per browser environment, then tell the agent which
+server to use. Do not let an agent infer a host from Tailscale peers, SSH config, or
+a previously used browser.
+
+Before manually registering a visible browser target, install the same reviewed
+checkout and run `npm ci` on that browser host. The Pi `/chrome-windows` flow below
+can provision its Windows-side runtime from WSL2 instead. Enable debugging in that
+host's Chrome at `chrome://inspect/#remote-debugging` and approve the connection.
+Remote examples keep raw CDP on the browser host's loopback interface and transport
+MCP over SSH stdio.
+
+Pi names tools by server, for example `mcp__chrome_mac__chrome_tabs` and
+`mcp__chrome_linux__chrome_tabs`. Separate names therefore let the operator say
+“use Chrome on my Mac” or “use the headless browser” without changing connection
+arguments mid-session.
+
+### Local Linux or macOS Chrome
+
+```sh
+pi mcp add chrome-linux --exposure direct -- \
+  node "$CHROME_MCP_ENTRY" serve --browser-host native
+```
+
+Use a different descriptive name, such as `chrome-mac-local`, when Pi itself runs
+natively on macOS.
+
+### Chrome on a remote Mac or Linux host
+
+```sh
+pi mcp add chrome-mac --exposure direct -- \
+  node "$CHROME_MCP_ENTRY" serve \
+  --ssh-host "$MAC_SSH_HOST" \
+  --ssh-user "$MAC_SSH_USER" \
+  --remote-entry "$MAC_CHROME_MCP_ENTRY"
+```
+
+An existing SSH-config alias may supply the user, key and port. The remote checkout
+must exist already; the connector does not install itself or alter SSH access.
+
+### Windows Chrome from WSL2
+
+For Pi, install this repository as a package in WSL2 and start Pi normally, including
+through `herdr --remote wsl2` or `nebula ssh wsl2`:
+
+```sh
+pi install git:github.com/jakkzz/chrome-cdp-skill
+pi
+```
+
+Then run this explicit interactive command:
+
+```text
+/chrome-windows
+```
+
+The extension verifies Windows Node.js 22+, npm, Chrome, and WSL interop; copies the
+reviewed MCP runtime to a content-versioned directory under Windows LocalAppData;
+installs its runtime dependencies there; opens
+`chrome://inspect/#remote-debugging` in Windows Chrome; and registers the
+session-scoped `chrome-windows` MCP server with direct tool exposure. It does not
+change firewall rules, expose a debugging port, edit Chrome settings, or approve
+Chrome's security prompt. Enable remote debugging and approve that visible prompt,
+then ask the agent to use Windows Chrome.
+
+Re-running `/chrome-windows` is safe: an unchanged runtime is reused, while changed
+source receives a new content-versioned directory. Windows Chrome and Node.js 22+
+remain prerequisites; the extension does not install operating-system applications.
+
+Manual configuration remains available when the extension is not installed:
+
+```sh
+pi mcp add chrome-windows --exposure direct -- \
+  node "$CHROME_MCP_ENTRY" serve \
+  --browser-host windows \
+  --windows-node 'C:\Program Files\nodejs\node.exe' \
+  --windows-entry 'C:\Users\YOUR_USER\chrome-cdp-skill\src\cli.mjs'
+```
+
+`--windows-node` may be omitted when `node.exe` is on the Windows PATH exposed
+to PowerShell. A separate Windows machine uses the SSH form with
+`--remote-shell powershell` instead.
+
+### Dedicated headless Chrome
+
+Launch a separate headless browser on the browser host with an isolated profile and
+a loopback-only debugging port. Do not reuse a daily Chrome profile or expose this
+port on a LAN or tailnet:
+
+```sh
+HEADLESS_CDP_PORT=9222
+HEADLESS_PROFILE=/absolute/path/to/a/dedicated-headless-profile
+"$BROWSER_EXECUTABLE" \
+  --headless=new \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port="$HEADLESS_CDP_PORT" \
+  --user-data-dir="$HEADLESS_PROFILE" \
+  about:blank
+```
+
+Register a server that targets that explicit port:
+
+```sh
+pi mcp add chrome-headless --exposure direct -- \
+  node "$CHROME_MCP_ENTRY" serve \
+  --browser-host native \
+  --port "$HEADLESS_CDP_PORT"
+```
+
+For headless Chrome on a remote host, combine the SSH arguments with `--port`;
+the port is resolved on that remote host. Headless mode is separate from Chrome's
+visible debugging approval flow, but controlling it still requires explicit operator
+authorization.
+
+After adding or changing entries, run `/reload` in Pi. Use `/mcp` to enable or
+disable targets for the current workflow. For every selected target, verify
+`chrome_doctor`, `chrome_connect` and `chrome_tabs` before interacting. Never
+silently fall back to a different configured browser when the requested target is
+unavailable.
 
 Custom profile or explicit loopback port:
 

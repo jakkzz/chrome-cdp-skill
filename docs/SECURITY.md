@@ -30,6 +30,15 @@ Never enable blanket tool approval merely to make the connector convenient.
 The setup CLI opens a browser only after `setup --open`; it prints the URL by
 default. Remote mode does not remotely launch Chrome or alter desktop settings.
 
+The Pi `/chrome-windows` command is a separate, explicit setup authorization for
+the Windows host paired with the current WSL2 environment. It verifies local
+Windows prerequisites, copies the reviewed package runtime into a content-versioned
+directory under that Windows user's LocalAppData, runs Windows npm there, opens the
+Chrome debugging setup page, and registers a session-scoped MCP server. It does not
+install Node.js or Chrome, enable debugging, approve Chrome prompts, change firewall
+rules, or expose CDP beyond loopback. Content-versioned runtime directories are not
+automatically deleted.
+
 ## Untrusted pages
 
 Page text, accessibility nodes, URLs, screenshots and JavaScript values are

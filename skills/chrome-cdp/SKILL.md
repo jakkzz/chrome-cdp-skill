@@ -14,6 +14,39 @@ Read the repository's `README.md` and `docs/MCP.md` for installation. If the
 package was copied as only a skill directory, obtain those instructions from
 the package source; do not assume the server is installed or tools exist.
 
+## Browser target selection
+
+- Treat the browser host as an explicit operator choice. If multiple MCP servers
+  are configured and the request does not identify Mac, Linux, Windows, headless,
+  or another named target, ask which one to use before inspecting tabs.
+- One MCP server process controls one browser host for its lifetime; individual
+  tool calls cannot retarget it. Use the tool namespace belonging to the named
+  MCP entry (for example `chrome-mac`, `chrome-linux`, `chrome-windows`, or
+  `chrome-headless`).
+- Native macOS/Linux uses `--browser-host native`; Windows Chrome from WSL uses
+  the explicit Windows interop configuration; a different machine uses SSH stdio;
+  a dedicated headless browser uses its own profile and explicit loopback
+  `--port`. Never reuse a daily Chrome profile for headless automation.
+- Run `chrome_doctor`, `chrome_connect`, and `chrome_tabs` against the chosen
+  namespace. If that target is unavailable, report it and ask rather than silently
+  falling back to another browser or host.
+- Keep target names and personal connection values in user-level MCP settings,
+  not project files or skill text. Headless control still requires explicit user
+  authorization even though there may be no visible Chrome approval prompt.
+
+## Pi Windows shortcut
+
+- When Pi is running inside WSL2 and the package extension is loaded, the operator
+  can explicitly run `/chrome-windows`. The command verifies Windows prerequisites,
+  installs a content-versioned Windows-side runtime under LocalAppData, opens
+  `chrome://inspect/#remote-debugging` in Windows Chrome, and registers the
+  session-scoped `chrome-windows` MCP server.
+- The slash command is operator authorization to perform that setup, but it cannot
+  enable Chrome's security control or approve Chrome's prompt. Wait for the operator
+  to do those visible steps, then verify with the selected server's `chrome_connect`.
+- Do not simulate, invoke, or bypass the slash command through another tool, and do
+  not install Windows Node.js or Chrome automatically. Report missing prerequisites.
+
 ## Consent and connection
 
 - Ask for permission to inspect/control the selected browser. Host, username,
@@ -26,8 +59,9 @@ the package source; do not assume the server is installed or tools exist.
   PowerShell remote-shell mode; do not SSH to WSL and treat it as Windows.
 - Use `chrome_doctor` to inspect the browser-host environment. A connected
   tailnet is reachability only; never automatically choose or scan peers.
-- Tell the human on that host to open `chrome://inspect/#remote-debugging`,
-  enable debugging and approve Chrome's prompt. This URL is not a CDP endpoint.
+- Unless the Pi `/chrome-windows` shortcut already opened it, tell the human on
+  that host to open `chrome://inspect/#remote-debugging`. The human must enable
+  debugging and approve Chrome's prompt. This URL is not a CDP endpoint.
 - The optional setup CLI can request opening this URL with explicit permission;
   it cannot open a remote desktop app merely because Tailscale is connected.
 - For remote SSH, encourage users to install their PUBLIC key in the host's
