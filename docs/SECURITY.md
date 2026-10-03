@@ -6,6 +6,9 @@ as the user. MCP is a tool protocol, **not** an authorization boundary.
 ## Transport
 
 - Only loopback CDP browser WebSockets are accepted by endpoint discovery.
+- WSL Windows mode launches the Windows-side MCP through encoded PowerShell
+  stdio. Raw CDP remains on Windows loopback; no `portproxy` or firewall rule is
+  created. The Windows process owns endpoint discovery and tab leases.
 - Remote mode runs the MCP process on the browser host through SSH stdio.
   It does not expose an HTTP MCP server or raw debugging port over the tailnet.
 - SSH uses `BatchMode=yes` and `StrictHostKeyChecking=yes`. Connection and

@@ -7,14 +7,17 @@ required. No Puppeteer and no browser download.
 ## Architecture
 
 ```text
-agent -> local stdio MCP -> loopback CDP -> Chrome
-agent -> SSH stdio -> browser-host MCP -> loopback CDP -> Chrome
+native agent -> local stdio MCP -> loopback CDP -> Chrome
+agent in WSL -> PowerShell stdio -> Windows MCP -> Windows loopback -> Chrome
+remote agent -> SSH stdio -> browser-host MCP -> loopback CDP -> Chrome
 ```
 
-The server runs on the **browser host**, as the browser's OS user. This keeps
-raw CDP off the network and shares tab ownership across independent agents,
-even when those agents run on different machines. SSH is the secure transport;
-Tailscale is optional reachability, not authorization.
+The server runs on the **browser host**, as the browser's OS user. Native Windows,
+macOS and Linux use local discovery. WSL can launch the Windows-side server over
+PowerShell stdio without exposing CDP or changing firewall rules. SSH remains the
+transport for a different machine; Tailscale is optional reachability, not
+authorization. All modes keep raw CDP on browser-host loopback and share tab
+ownership across independent agents.
 
 Host, username, SSH port, identity file and browser profile are runtime inputs.
 There are no personal device addresses, credentials or usernames in defaults.
@@ -76,8 +79,34 @@ node src/cli.mjs serve --port "$CDP_PORT"
 These are alternative connection inputs. Automatic discovery uses conventional
 profile locations on macOS, Windows and Linux (including Flatpak). It does not
 scan networks, choose a tailnet peer, or silently fall back to another browser
-when a discovered file is invalid. WSL agents should use SSH to the actual
-browser host rather than assume that a Linux browser is visible on Windows.
+when a discovered file is invalid. Native Windows works without special flags.
+WSL is detected separately and requires an explicit Windows-interop installation
+or `--browser-host native` for an actual Linux GUI browser.
+
+## Windows Chrome from WSL2
+
+Install Node.js 22+ and this package on Windows (`npm ci` in the Windows
+checkout). Chrome and the Windows-side MCP then use the same Windows user,
+profile files, loopback interface and lease directory. Configure the MCP command
+inside WSL with explicit Windows paths:
+
+```sh
+node "$WSL_CHECKOUT/src/cli.mjs" serve \
+  --browser-host windows \
+  --windows-node 'C:\Program Files\nodejs\node.exe' \
+  --windows-entry 'C:\Users\me\chrome-cdp-skill\src\cli.mjs'
+```
+
+`--windows-node` may be omitted when `node.exe` is on the Windows PATH visible
+to PowerShell. `--windows-entry` is always required and must be an absolute
+Windows path. The WSL process starts an encoded, noninteractive PowerShell
+command and proxies MCP over stdio. It does not listen on a network interface,
+edit the firewall, or launch/enable Chrome debugging.
+
+If `powershell.exe` interop is disabled for the distro, SSH directly to Windows
+OpenSSH using `--remote-shell powershell`; do not SSH into WSL and expose CDP
+with `netsh portproxy`. To control a real Linux GUI Chrome from WSL instead,
+select `--browser-host native` explicitly.
 
 ## Remote access and Tailscale
 

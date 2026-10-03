@@ -1,4 +1,8 @@
 # Visible Windows Chrome from WSL2
+> **Deprecated compatibility path.** New MCP installations should use the
+> Windows-interop transport documented in the repository `README.md` and
+> `docs/MCP.md`. It keeps CDP on Windows loopback and needs no administrator,
+> firewall rule, fixed WSL address or `netsh portproxy`.
 
 This fork adds optional WSL helpers; the upstream `cdp.mjs` is unchanged.
 The skill is agent-independent: it needs a terminal, Node.js 22+, and access to

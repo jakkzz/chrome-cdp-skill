@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { environment, parsePortFile, portFileCandidates, validateEndpoint, validatePort, shellQuote, sshArgs, tailscaleCandidates } from '../src/connector.mjs';
-import { parseOptions } from '../src/cli.mjs';
+import { browserHostMode, parseOptions } from '../src/cli.mjs';
+import { encodedPowerShell, windowsInteropSpec, windowsServerCommand } from '../src/windows-interop.mjs';
 
 test('port files support CRLF and validate browser paths', () => {
   assert.equal(parsePortFile('9222\r\n/devtools/browser/test-id\r\n'), 'ws://127.0.0.1:9222/devtools/browser/test-id');
@@ -29,6 +30,39 @@ test('ports and CLI options fail closed', () => {
   assert.throws(() => parseOptions(['serve', '--open']));
   assert.throws(() => parseOptions(['serve', 'unexpected']));
   assert.equal(parseOptions(['serve', '--ssh-host', 'host.test', '--ssh-user', 'runtime-user', '--remote-entry', '/runtime/cli.mjs']).sshUser, 'runtime-user');
+});
+
+test('browser-host selection treats native Windows and WSL as different runtimes', () => {
+  assert.equal(browserHostMode({}, { platform: 'win32', wsl: false }), 'native');
+  assert.equal(browserHostMode({}, { platform: 'darwin', wsl: false }), 'native');
+  assert.equal(browserHostMode({ browserHost: 'native' }, { platform: 'linux', wsl: true }), 'native');
+  assert.equal(browserHostMode({ browserHost: 'windows', windowsEntry: 'C:\\runtime\\src\\cli.mjs' }, { platform: 'linux', wsl: true }), 'windows');
+  assert.equal(browserHostMode({ windowsEntry: 'C:\\runtime\\src\\cli.mjs' }, { platform: 'linux', wsl: true }), 'windows');
+  assert.equal(browserHostMode({ sshHost: 'host.test' }, { platform: 'linux', wsl: true }), 'ssh');
+  assert.throws(() => browserHostMode({}, { platform: 'linux', wsl: true }), /WSL detected/);
+  assert.throws(() => browserHostMode({ browserHost: 'windows' }, { platform: 'darwin', wsl: false }), /only on native Windows or WSL/);
+});
+
+test('Windows interop launches a Windows-side native MCP over encoded PowerShell stdio', () => {
+  const options = {
+    windowsEntry: "C:\\runtime path\\it's\\src\\cli.mjs",
+    windowsNode: 'C:\\Program Files\\nodejs\\node.exe',
+    port: 9222,
+    allowEvaluate: true,
+    herdr: true,
+  };
+  assert.deepEqual(windowsServerCommand(options), [
+    'C:\\Program Files\\nodejs\\node.exe', "C:\\runtime path\\it's\\src\\cli.mjs", 'serve',
+    '--browser-host', 'native', '--port', '9222', '--allow-evaluate', '--herdr-context',
+  ]);
+  const spec = windowsInteropSpec(options);
+  assert.equal(spec.executable, 'powershell.exe');
+  assert.deepEqual(spec.args.slice(0, 4), ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand']);
+  const decoded = Buffer.from(spec.args.at(-1), 'base64').toString('utf16le');
+  assert.equal(decoded, "& 'C:\\Program Files\\nodejs\\node.exe' 'C:\\runtime path\\it''s\\src\\cli.mjs' 'serve' '--browser-host' 'native' '--port' '9222' '--allow-evaluate' '--herdr-context'; exit $LASTEXITCODE");
+  assert.equal(Buffer.from(encodedPowerShell(['node.exe', 'C:\\runtime\\src\\cli.mjs']), 'base64').toString('utf16le'), "& 'node.exe' 'C:\\runtime\\src\\cli.mjs'; exit $LASTEXITCODE");
+  assert.throws(() => windowsServerCommand({ windowsEntry: '/home/runtime/src/cli.mjs' }), /absolute Windows path/);
+  assert.throws(() => windowsServerCommand({ windowsEntry: 'C:\\runtime\\src\\cli.mjs', windowsNode: 'node.exe\nwhoami' }), /control characters/);
 });
 
 test('SSH uses strict host checking, batch auth and safely quoted runtime inputs', () => {

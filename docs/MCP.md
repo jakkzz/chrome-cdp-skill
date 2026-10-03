@@ -76,6 +76,36 @@ Portable entry shape (replace the explicit placeholder with your runtime path):
 }
 ```
 
+## Windows Chrome when the agent runs in WSL2
+
+Install the same reviewed revision and run `npm ci` in both the WSL and Windows
+checkouts. In the agent's MCP configuration, keep the WSL Node command and add
+explicit Windows browser-host arguments:
+
+```text
+command: node
+args:
+  - <absolute-WSL-checkout>/src/cli.mjs
+  - serve
+  - --browser-host
+  - windows
+  - --windows-node
+  - C:\Program Files\nodejs\node.exe
+  - --windows-entry
+  - C:\Users\me\chrome-cdp-skill\src\cli.mjs
+```
+
+The entry path must be absolute and native to Windows. `--windows-node` is
+optional when `node.exe` is available in Windows PowerShell's PATH. The WSL
+proxy launches the Windows-side MCP through encoded PowerShell and carries MCP
+on stdio; CDP remains on Windows loopback. No firewall or port forwarding is
+needed. Run `/reload` or the equivalent once after changing MCP configuration.
+
+WSL auto mode intentionally fails with setup guidance unless a Windows entry is
+configured. Use `--browser-host native` only for an actual Linux GUI browser in
+WSL. If Windows interop is disabled, use the SSH mode below against Windows
+OpenSSH with `--remote-shell powershell`.
+
 ## Remote browser: same entry, SSH arguments
 
 For Pi, Claude Code and Codex, append these to the `serve` arguments in their

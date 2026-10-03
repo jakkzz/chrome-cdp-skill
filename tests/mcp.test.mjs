@@ -4,7 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createChromeServer, textResult } from '../src/server.mjs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,7 +60,7 @@ test('stdio MCP works without Chrome, fails clearly on connection and keeps stdo
   const directory = await mkdtemp(join(tmpdir(), 'chrome-mcp-'));
   const client = new Client({ name: 'chrome-stdio-test', version: '1.0.0' });
   const transport = new StdioClientTransport({ command: process.execPath,
-    args: [fileURLToPath(new URL('../src/cli.mjs', import.meta.url)), 'serve', '--port-file', join(directory, 'missing')], stderr: 'pipe' });
+    args: [fileURLToPath(new URL('../src/cli.mjs', import.meta.url)), 'serve', '--browser-host', 'native', '--port-file', join(directory, 'missing')], stderr: 'pipe' });
   let stderr = '';
   transport.stderr?.on('data', chunk => { stderr += chunk; });
   try {
@@ -75,6 +75,41 @@ test('stdio MCP works without Chrome, fails clearly on connection and keeps stdo
     assert.equal(state.debugging.discovered, false);
     assert.equal(typeof state.tailscale.connected, 'boolean');
     assert.equal(state.setupUrl, 'chrome://inspect/#remote-debugging');
+    assert.equal(stderr, '');
+  } finally { await client.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('WSL Windows interop preserves MCP stdio through the host launcher', { timeout: 20000, skip: process.platform === 'win32' }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'chrome-wsl-mcp-'));
+  const bin = join(directory, 'bin');
+  const missing = join(directory, 'missing');
+  await mkdir(bin);
+  const launcher = join(bin, 'powershell.exe');
+  await writeFile(launcher, '#!/bin/sh\nexec "$FAKE_NODE" "$FAKE_ENTRY" serve --browser-host native --port-file "$FAKE_PORT_FILE"\n');
+  await chmod(launcher, 0o755);
+
+  const client = new Client({ name: 'chrome-wsl-stdio-test', version: '1.0.0' });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [fileURLToPath(new URL('../src/cli.mjs', import.meta.url)), 'serve', '--browser-host', 'windows', '--windows-entry', 'C:\\runtime\\src\\cli.mjs'],
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH ?? ''}`,
+      WSL_DISTRO_NAME: 'test-wsl',
+      FAKE_NODE: process.execPath,
+      FAKE_ENTRY: fileURLToPath(new URL('../src/cli.mjs', import.meta.url)),
+      FAKE_PORT_FILE: missing,
+    },
+    stderr: 'pipe',
+  });
+  let stderr = '';
+  transport.stderr?.on('data', chunk => { stderr += chunk; });
+  try {
+    await client.connect(transport);
+    assert.ok((await client.listTools()).tools.some(tool => tool.name === 'chrome_connect'));
+    const result = await client.callTool({ name: 'chrome_connect', arguments: {} });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /ENOENT/);
     assert.equal(stderr, '');
   } finally { await client.close(); await rm(directory, { recursive: true, force: true }); }
 });

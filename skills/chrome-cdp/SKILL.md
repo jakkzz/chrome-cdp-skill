@@ -1,13 +1,15 @@
 ---
 name: chrome-cdp
-description: Control an explicitly approved local or remote Chrome browser through MCP, with runtime host selection, optional Tailscale/SSH connectivity and shared browser-host tab ownership.
+description: Use whenever the user asks to inspect, automate, test, troubleshoot, or control a visible Chrome browser on Windows, WSL2, macOS, or Linux, including Windows Chrome from WSL or a browser reached through SSH. Covers Chrome debugging approval, tabs, screenshots, clicks, typing, scrolling, CDP connection failures, runtime host selection, and shared browser-host tab ownership.
 ---
 
 # Chrome MCP
 
 This skill is agent-independent guidance. Browser operations use the configured
 `chrome-cdp` **MCP server**, not the legacy scripts. The core requires Node.js
-22+ and runs on the browser host; remote agents reach it over SSH stdio.
+22+ and runs on the browser host. Native Windows, macOS and Linux run it locally;
+WSL runs the Windows-side server through PowerShell stdio when configured with
+`--browser-host windows`; remote agents reach the browser host over SSH stdio.
 Read the repository's `README.md` and `docs/MCP.md` for installation. If the
 package was copied as only a skill directory, obtain those instructions from
 the package source; do not assume the server is installed or tools exist.
@@ -17,6 +19,11 @@ the package source; do not assume the server is installed or tools exist.
 - Ask for permission to inspect/control the selected browser. Host, username,
   profile and identity file come from runtime operator input, never defaults
   invented by the agent.
+- Native Windows is a first-class browser host and uses local discovery. WSL is
+  Linux but cannot use Windows loopback/profile files directly: select the
+  explicit Windows-interop configuration. Never expose CDP with a port proxy.
+- If WSL interop is unavailable, use SSH directly to Windows OpenSSH with the
+  PowerShell remote-shell mode; do not SSH to WSL and treat it as Windows.
 - Use `chrome_doctor` to inspect the browser-host environment. A connected
   tailnet is reachability only; never automatically choose or scan peers.
 - Tell the human on that host to open `chrome://inspect/#remote-debugging`,
