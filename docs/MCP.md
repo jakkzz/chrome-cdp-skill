@@ -49,6 +49,70 @@ server already uses the name `chrome-windows`, Pi gives that file configuration
 precedence; remove or rename the conflicting entry if the command's generated target
 should be used.
 
+### Reliable Windows setup and persistent configuration
+
+| Pi command | Behavior |
+| --- | --- |
+| `/chrome-windows` | Prepare/register once in this extension runtime. |
+| `/chrome-windows connect` | Ask the agent to verify the Windows host, then perform one CDP handshake using the existing MCP connection. |
+| `/chrome-windows status` | Ask the agent to report the Windows doctor's current discovery/connection state; no new handshake or tab access. |
+| `/chrome-windows config` | Print the prepared persistent configuration without writing it. |
+
+`connect` and `status` start an ordinary agent turn using the existing Windows MCP
+tools and Pi's normal permission hooks. They are not a separate CDP client or a
+background connection monitor. The agent must stop on a wrong host, preserve native
+Chrome approval, and report actual failures rather than label every timeout as
+approval-needed. Neither command authorizes tab access. If the Windows tools are
+not available, inspect `/mcp`; these commands never install or re-register a server.
+They work with file-configured Windows tools too. A busy agent or setup in progress
+is reported without queueing delayed browser work.
+
+After changing extension JavaScript, restart Pi once: native ESM dependencies can
+remain cached across `/reload`. Reload is still appropriate for MCP configuration
+changes. The footer follows actual Windows doctor/connect tool calls: checking or
+connecting, then connected, not connected, wrong host, unavailable, or failed. It
+shows the last observed result, not a background monitor; use `status` to refresh
+server-reported state or `connect` for a fresh handshake. Other browser hosts and
+ordinary tab failures cannot overwrite the Windows connection indicator.
+
+Windows setup and the WSL proxy share PowerShell discovery: executable files on
+absolute PATH entries first, then the conventional Windows PowerShell executable
+under `/mnt/c/Windows/System32/WindowsPowerShell/v1.0/`. This avoids requiring a
+Pi restart just because Windows PATH was not inherited. Custom Windows mount
+locations still need the executable directory on the Pi launcher's PATH. Discovery
+does not enable broken/disabled WSL interop.
+
+Setup subprocesses have finite timeouts and force-stop their owned bridge process
+on timeout. Windows-side work may have partially completed; inspect before retrying.
+No browser action is replayed. Setup is single-flight within a Pi extension runtime;
+repeating it after registration preserves the MCP connection instead of launching
+Chrome and registering again. Use `/mcp` to inspect/reconnect, or `/reload` to load
+updated extension code.
+
+Registration is **not** verified connectivity. Use the tools in the same Pi session:
+`chrome-windows` → `chrome_doctor` → `chrome_connect` → `chrome_tabs`. Check the
+reported platform before reading any tabs; do not fall back to a Mac or Linux
+browser. `/mcp` shows file-config overrides and connection errors.
+
+After successful preparation, run:
+
+```text
+/chrome-windows config
+```
+
+This prints the exact prepared `mcpServers.chrome-windows` entry, with discovered
+Windows paths and direct exposure. It does not install anything, verify connection,
+or write configuration. Merge that one entry into your user-level `mcp.json`,
+preserving unrelated servers; then `/reload` once. Use distinct names such as
+`chrome-windows` and `chrome-mac`. New Pi sessions then load the file-configured
+Windows target without another setup command. Chrome approval is still required
+when prompted; no fixed CDP port, port forwarding or firewall rule is needed.
+
+The Windows runtime is content-versioned. After updating the package, reload and
+prepare again, then refresh the saved entry from `/chrome-windows config` if its
+Windows entry path changed. A file-configured entry takes precedence over the
+session registration, so always confirm the effective entry in `/mcp`.
+
 ## Claude Code
 
 ```sh

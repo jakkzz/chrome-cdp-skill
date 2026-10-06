@@ -1,6 +1,30 @@
-import { win32 } from 'node:path';
+import { accessSync, constants, statSync } from 'node:fs';
+import { delimiter, isAbsolute, join, win32 } from 'node:path';
 
 import { validatePort } from './connector.mjs';
+
+const WSL_POWERSHELL = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
+
+function executableFile(path) {
+  try {
+    accessSync(path, constants.X_OK);
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+export function resolvePowerShell({ env = process.env, available = executableFile } = {}) {
+  const candidates = (env.PATH ?? '').split(delimiter)
+    .filter((directory) => isAbsolute(directory))
+    .map((directory) => join(directory, 'powershell.exe'));
+  candidates.push(WSL_POWERSHELL);
+  const executable = candidates.find((candidate) => available(candidate));
+  if (!executable) {
+    throw new Error('Windows PowerShell was not found on PATH or in the standard WSL Windows mount. Check Windows drive mounts and WSL interop, or add its directory to the launcher PATH before starting Pi.');
+  }
+  return executable;
+}
 
 function safePowerShellArgument(value, label) {
   if (typeof value !== 'string' || !value || /[\r\n\0]/.test(value)) {
@@ -48,10 +72,10 @@ export function encodedPowerShell(command) {
   return Buffer.from(script, 'utf16le').toString('base64');
 }
 
-export function windowsInteropSpec(options) {
+export function windowsInteropSpec(options, discovery = {}) {
   const command = windowsServerCommand(options);
   return {
-    executable: 'powershell.exe',
+    executable: resolvePowerShell(discovery),
     args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encodedPowerShell(command)],
     command,
   };

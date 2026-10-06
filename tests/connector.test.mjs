@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { environment, forwardedEndpoint, parsePortFile, portFileCandidates, validateEndpoint, validatePort, shellQuote, sshArgs, tailscaleCandidates } from '../src/connector.mjs';
 import { browserHostMode, parseOptions } from '../src/cli.mjs';
 import { encodedPowerShell, windowsInteropSpec, windowsServerCommand } from '../src/windows-interop.mjs';
@@ -64,8 +65,11 @@ test('Windows interop launches a Windows-side native MCP over encoded PowerShell
     'C:\\Program Files\\nodejs\\node.exe', "C:\\runtime path\\it's\\src\\cli.mjs", 'serve',
     '--browser-host', 'native', '--port', '9222', '--allow-evaluate', '--herdr-context',
   ]);
-  const spec = windowsInteropSpec(options);
-  assert.equal(spec.executable, 'powershell.exe');
+  const spec = windowsInteropSpec(options, {
+    env: { PATH: '/windows-tools' },
+    available: (path) => path === join('/windows-tools', 'powershell.exe'),
+  });
+  assert.equal(spec.executable, join('/windows-tools', 'powershell.exe'));
   assert.deepEqual(spec.args.slice(0, 4), ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand']);
   const decoded = Buffer.from(spec.args.at(-1), 'base64').toString('utf16le');
   assert.equal(decoded, "& 'C:\\Program Files\\nodejs\\node.exe' 'C:\\runtime path\\it''s\\src\\cli.mjs' 'serve' '--browser-host' 'native' '--port' '9222' '--allow-evaluate' '--herdr-context'; exit $LASTEXITCODE");

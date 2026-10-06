@@ -141,9 +141,28 @@ change firewall rules, expose a debugging port, edit Chrome settings, or approve
 Chrome's security prompt. Enable remote debugging and approve that visible prompt,
 then ask the agent to use Windows Chrome.
 
-Re-running `/chrome-windows` is safe: an unchanged runtime is reused, while changed
-source receives a new content-versioned directory. Windows Chrome and Node.js 22+
-remain prerequisites; the extension does not install operating-system applications.
+Within one extension runtime, repeated `/chrome-windows` calls preserve the existing
+registration instead of reopening Chrome or reconnecting. Concurrent setup is refused.
+After `/reload`, an unchanged runtime is reused; changed source receives a new
+content-versioned directory. Windows Chrome and Node.js 22+ remain prerequisites;
+the extension does not install operating-system applications.
+
+PowerShell is discovered on PATH or at its standard WSL-mounted Windows location,
+so a missing inherited Windows PATH need not cause `spawn powershell.exe ENOENT`.
+Setup timeouts stop the owned bridge process and report possible partial Windows
+work; they do not repair disabled WSL interop or retry browser actions.
+
+Registration is session-only and is **not** proof of connection. In the same Pi
+session, run `/chrome-windows connect` to have the agent verify the Windows host
+and CDP handshake, or `/chrome-windows status` for current doctor-reported state.
+These use existing MCP tools through Pi's normal permission pipeline; they do not
+reinstall, open another client, inspect tabs, or silently select another browser.
+`/mcp` shows errors and file-config overrides. Restart Pi once after extension code
+updates because native ESM dependencies may remain cached across `/reload`.
+After preparation,
+`/chrome-windows config` prints the exact entry to merge into user-level `mcp.json`
+for future sessions; it never overwrites settings automatically. See the
+[persistent setup guidance](docs/MCP.md#reliable-windows-setup-and-persistent-configuration).
 
 Manual configuration remains available when the extension is not installed:
 

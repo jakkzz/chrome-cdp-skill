@@ -81,6 +81,19 @@ address, or touch the user's ordinary Chrome profile.
 - The slash command is operator authorization to perform that setup, but it cannot
   enable Chrome's security control or approve Chrome's prompt. Wait for the operator
   to do those visible steps, then verify with the selected server's `chrome_connect`.
+- Registration is session-local and does not prove connection. `/chrome-windows
+  connect` asks the agent to check the Windows doctor then handshake via the existing
+  MCP tools; `/chrome-windows status` requests doctor-reported state without a new
+  handshake. Both use the normal permission pipeline, never install/re-register,
+  and do not authorize tab access. Use `/mcp` to inspect effective configuration.
+  Repeating setup preserves an existing registration. Restart Pi once after changing
+  extension JavaScript if `/reload` retains cached native ESM code.
+- `/chrome-windows config` prints the prepared user-level MCP entry without writing
+  it. Persist only on explicit user authorization, merge without replacing unrelated
+  servers, and reload once. File-configured entries override session registrations;
+  refresh a saved versioned Windows entry after package updates.
+- PowerShell discovery checks executable PATH entries and the standard WSL Windows
+  mount. If it still fails, diagnose mounts/interop; do not retry guessed CDP ports.
 - Do not simulate, invoke, or bypass the slash command through another tool, and do
   not install Windows Node.js or Chrome automatically. Report missing prerequisites.
 

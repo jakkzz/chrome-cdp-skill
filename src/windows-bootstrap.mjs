@@ -5,6 +5,7 @@ import { basename, resolve, win32 } from 'node:path';
 import { promisify } from 'node:util';
 
 import { SETUP_URL, environment } from './connector.mjs';
+import { resolvePowerShell } from './windows-interop.mjs';
 
 const exec = promisify(execFile);
 const INSTALL_ROOT = 'pi-chrome-cdp';
@@ -108,15 +109,20 @@ export function windowsRuntimeDirectory(localAppData, fingerprint) {
   return win32.join(localAppData, INSTALL_ROOT, `runtime-${fingerprint}`);
 }
 
-async function run(executable, args, options = {}) {
+export async function run(executable, args, options = {}) {
   try {
     return await exec(executable, args, {
       timeout: 120_000,
+      // WSL interop can ignore SIGTERM; bound the owned bridge process as well.
+      killSignal: 'SIGKILL',
       maxBuffer: 1024 * 1024,
       windowsHide: true,
       ...options,
     });
   } catch (error) {
+    if (error.killed && error.code !== 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
+      throw new Error(`${basename(executable)} timed out; the owned command was stopped. Check WSL interop in a native WSL terminal before retrying. Any Windows-side setup may have partially completed.`, { cause: error });
+    }
     const detail = String(error.stderr || error.stdout || error.message).trim();
     throw new Error(detail || `${basename(executable)} failed`);
   }
@@ -129,7 +135,7 @@ async function toWslPath(windowsPath) {
   return converted;
 }
 
-async function installWindowsRuntime(packageRoot, windowsDirectory, fingerprint, npmPath, onProgress) {
+async function installWindowsRuntime(packageRoot, windowsDirectory, fingerprint, npmPath, onProgress, powershell) {
   const wslDirectory = await toWslPath(windowsDirectory);
   const markerPath = resolve(wslDirectory, MARKER);
   try {
@@ -158,14 +164,14 @@ async function installWindowsRuntime(packageRoot, windowsDirectory, fingerprint,
 Set-Location -LiteralPath ${powershellQuote(windowsDirectory)}
 & ${powershellQuote(npmPath)} '${npmCommand}' '--omit=dev' '--no-audit' '--no-fund'
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`;
-  await run('powershell.exe', powershellArgs(installScript));
+  await run(powershell, powershellArgs(installScript));
   await writeFile(markerPath, `${fingerprint}\n`, 'utf8');
 }
 
-async function openWindowsChrome(chromePath) {
+async function openWindowsChrome(chromePath, powershell) {
   const openScript = `$ErrorActionPreference = 'Stop'
 Start-Process -FilePath ${powershellQuote(chromePath)} -ArgumentList @('--new-window', ${powershellQuote(SETUP_URL)})`;
-  await run('powershell.exe', powershellArgs(openScript), { timeout: 15_000 });
+  await run(powershell, powershellArgs(openScript), { timeout: 15_000 });
 }
 
 export async function prepareWindowsChrome({ packageRoot, onProgress, runtime = environment() }) {
@@ -174,13 +180,14 @@ export async function prepareWindowsChrome({ packageRoot, onProgress, runtime = 
   }
 
   onProgress?.('Checking Windows Node.js and Chrome…');
-  const discovered = parseWindowsDiscovery((await run('powershell.exe', powershellArgs(windowsDiscoveryScript()), { timeout: 30_000 })).stdout);
+  const powershell = resolvePowerShell();
+  const discovered = parseWindowsDiscovery((await run(powershell, powershellArgs(windowsDiscoveryScript()), { timeout: 30_000 })).stdout);
   const fingerprint = await runtimeFingerprint(packageRoot);
   const runtimeDirectory = windowsRuntimeDirectory(discovered.localAppData, fingerprint);
-  await installWindowsRuntime(packageRoot, runtimeDirectory, fingerprint, discovered.npmPath, onProgress);
+  await installWindowsRuntime(packageRoot, runtimeDirectory, fingerprint, discovered.npmPath, onProgress, powershell);
 
   onProgress?.('Opening Chrome remote-debugging setup on Windows…');
-  await openWindowsChrome(discovered.chromePath);
+  await openWindowsChrome(discovered.chromePath, powershell);
 
   return {
     ...discovered,

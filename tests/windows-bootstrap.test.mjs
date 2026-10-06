@@ -49,6 +49,7 @@ test('/chrome-windows registers a session-scoped direct MCP server after prepara
   const statuses = [];
   const notices = [];
   const pi = {
+    on() {},
     registerCommand(name, command) { commands.set(name, command); },
     registerMcpServer(name, config) { servers.push({ name, config }); },
   };
@@ -77,6 +78,8 @@ test('/chrome-windows registers a session-scoped direct MCP server after prepara
     '--windows-node', 'C:\\Program Files\\nodejs\\node.exe',
     '--windows-entry', 'C:\\runtime\\src\\cli.mjs',
   ]);
-  assert.equal(statuses.at(-1).value, 'Windows Chrome MCP registered');
+  assert.equal(statuses.at(-1).value, 'Windows MCP registered · connection not verified');
   assert.match(notices.at(-1).message, /Enable remote debugging/);
+  assert.match(notices.at(-1).message, /THIS Pi session/);
+  assert.match(notices.at(-1).message, /not a verified connection/);
 });
